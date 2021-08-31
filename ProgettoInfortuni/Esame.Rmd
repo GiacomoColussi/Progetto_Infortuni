@@ -138,11 +138,11 @@ InfortuniPerLavoratori = pivot_longer(InfortuniPerLavoratori, c("Infortunati","N
 
 Sfruttando i dati ISTAT cosa possiamo dire a rigurado della distribuzione degli infortuni in Italia?
 
-> Quali sono i mesi più rischiosi in termini di infortuni?
-
 > Quali settori sono i più pericolosi?
 
 > Come sono distribuiti gli infortuni tra le età e i sessi?
+
+> Quali sono i mesi con più infortuni registrati?
 
 ## Settori dove avvengono più infortuni
 
