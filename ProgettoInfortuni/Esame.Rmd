@@ -1,0 +1,288 @@
+---
+title: "Analisi infortunati in Friuli Venezia Giulia"
+author: "Giacomo Colussi"
+output:
+  slidy_presentation:
+    css: ./style.css
+    footer: "Colussi Giacomo | 02/09/2021"
+    incremental: yes
+    widescreen: true
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE, message = FALSE, warning = FALSE)
+```
+<!-- Library code block -->
+```{r, include=FALSE}
+library(dplyr)
+library(tidyr)
+library(readr)
+library(stringr)
+library(ggplot2)
+library(ggthemes)
+library(ggraph)
+library(igraph)
+library(tidyverse)
+library(viridis)
+library(corrplot)
+library(shiny)
+```
+<!-- Data inizialization code block -->
+```{r, include=FALSE}
+codiciATECO = read.csv2("codiciATECO.csv")
+
+codiciLuogo = read.csv2("20210514-ISTAT-ASL.csv")
+
+#Calcolo numero lavoratori maschi e femmine
+impiegatiMaschi = read.csv("ImpiegatiMediMaschiItalia.csv")
+impiegateFemmine = read.csv("ImpiegatiMediFemmineItalia.csv")
+
+impiegatiMediMaschiAnnui = impiegatiMaschi %>%
+  filter(Paese.di.nascita == "Italia") %>%
+  filter(Sesso == "maschi") %>%
+  filter(D8 == "Y_GE15") %>%
+  filter(Qualifica.professionale == "totale") %>%
+  select(Territorio, Seleziona.periodo, Value)
+
+impiegateMedeFemmineAnnue = impiegateFemmine %>%
+  filter(Paese.di.nascita == "Italia") %>%
+  filter(Sesso == "femmine") %>%
+  filter(D8 == "Y_GE15") %>%
+  filter(Qualifica.professionale == "totale") %>%
+  select(Territorio, Seleziona.periodo, Value)
+
+NumeroImpiegatiMaschi = impiegatiMediMaschiAnnui %>% filter(Territorio == "Friuli-Venezia Giulia" & (Seleziona.periodo == 2017 | Seleziona.periodo == 2016)) %>% pull(Value) %>% sum()
+NumeroImpiegateFemmine = impiegateMedeFemmineAnnue %>% filter(Territorio == "Friuli-Venezia Giulia" & (Seleziona.periodo == 2017 | Seleziona.periodo == 2016)) %>% pull(Value) %>% sum()
+
+# Codici ATECO per classificare i settori lavorativi
+codiciATECO = codiciATECO %>%
+  select(CODICE, DESCRIZIONE)
+
+codiciATECO = codiciATECO %>%
+  filter(!str_detect(CODICE, "\\."))
+
+gruppiATECO = codiciATECO %>%
+  filter(!str_detect(CODICE, "[0123456789]")) %>%
+  rename(GruppoAttivitaEconomica = CODICE)
+
+# Rinominazione di alcuni gruppi per migliorare le legende
+gruppiATECO["DESCRIZIONE"][gruppiATECO["GruppoAttivitaEconomica"] == "T"] = "LAVORO DOMESTICO"
+gruppiATECO["DESCRIZIONE"][gruppiATECO["GruppoAttivitaEconomica"] == "E"] = "FORNITURE IDRICHE, RIFIUTI"
+gruppiATECO["DESCRIZIONE"][gruppiATECO["GruppoAttivitaEconomica"] == "G"] = "COMMERCIO, RIPARAZIONI VEICOLI"
+gruppiATECO["DESCRIZIONE"][gruppiATECO["GruppoAttivitaEconomica"] == "O"] = "AMMINISTRAZIONE PUBBLICA"
+gruppiATECO["DESCRIZIONE"][gruppiATECO["GruppoAttivitaEconomica"] == "R"] = "ATTIVITA INTRATTENIMENTO"
+gruppiATECO["DESCRIZIONE"][gruppiATECO["GruppoAttivitaEconomica"] == "D"] = "FORNITURA ELETTRICA, GAS, VAPORE, CONDIZIONAMENTO"
+
+codiciATECO = codiciATECO %>%
+  filter(str_detect(CODICE, "[0123456789]"))
+
+codiciLuogo = codiciLuogo %>%
+  separate(Codice.ISTAT, into = c("Codice", "other"), sep = 2) %>%
+  select(Sigla.Prov., Codice, Comune) %>%
+  distinct(Sigla.Prov., .keep_all = TRUE) %>%
+  arrange(Codice)
+
+dfFVG = read.csv2("DatiConCadenzaSemestraleInfortuniFriuliVeneziaGiulia.csv")
+
+dfFVG = dfFVG %>%
+  select(DataAccadimento, DataMorte, LuogoAccadimento, Genere, Eta, LuogoNascita, ModalitaAccadimento, ConSenzaMezzoTrasporto, SettoreAttivitaEconomica, Gestione, GrandeGruppoTariffario)
+
+dfFVG = dfFVG %>%
+  rename(InItinere = ModalitaAccadimento) %>%
+  rename(MezzoDiTrasportoCoinvolto = ConSenzaMezzoTrasporto)
+
+dfFVG["InItinere"][dfFVG["InItinere"] == "S"] = TRUE
+dfFVG["InItinere"][dfFVG["InItinere"] == "N"] = FALSE
+dfFVG["MezzoDiTrasportoCoinvolto"][dfFVG["MezzoDiTrasportoCoinvolto"] == "S"] = TRUE
+dfFVG["MezzoDiTrasportoCoinvolto"][dfFVG["MezzoDiTrasportoCoinvolto"] == "N"] = FALSE
+
+dfFVG = dfFVG %>%
+  separate(DataAccadimento, into = c("GiornoAccadimento", "MeseAccadimento", "AnnoAccadimento"), sep="/")
+
+dfFVG = dfFVG %>%
+  separate(SettoreAttivitaEconomica, into = c("GruppoAttivitaEconomica", "SettoreAttivitaEconomica"), sep=" ")
+
+dfConteggioEta = dfFVG %>% filter(Gestione!="S") %>% count(Eta, Genere)
+dfConteggioEta = dfConteggioEta %>% 
+  rbind(
+    dfConteggioEta %>% filter(Genere == "M"),
+    dfConteggioEta %>% filter(Genere == "F") %>% mutate(n = n*-1))
+
+InfortuniPerLavoratori = dfFVG %>%
+  filter(Eta >= 16) %>%
+  filter(AnnoAccadimento == 2017 | AnnoAccadimento == 2016) %>%
+  count(Eta, Genere) %>%
+  mutate(InfortuniPerLavoratore = n/(NumeroImpiegatiMaschi))
+InfortuniPerLavoratori = left_join(InfortuniPerLavoratori, InfortuniPerLavoratori %>%
+            filter(Genere == "F") %>%
+            mutate(InfortuniPerLavoratore = n/(NumeroImpiegateFemmine)))
+
+InfortuniPerLavoratori = dfFVG %>%
+  filter(Eta >= 16) %>%
+  filter(AnnoAccadimento == 2017 | AnnoAccadimento == 2016) %>%
+  count(Genere) %>%
+  mutate(NumeroImpiegati = NumeroImpiegatiMaschi) %>%
+  rename(Infortunati = n)
+InfortuniPerLavoratori["NumeroImpiegati"][InfortuniPerLavoratori["Genere"] == "F"] = NumeroImpiegateFemmine
+InfortuniPerLavoratori = InfortuniPerLavoratori %>%
+  mutate(NonInfortunati = NumeroImpiegati-Infortunati) %>%
+  mutate(PercentualeInfortunati = Infortunati/NumeroImpiegati) %>%
+  mutate(PercentualeNonInfortunati = NonInfortunati/NumeroImpiegati)
+InfortuniPerLavoratori = pivot_longer(InfortuniPerLavoratori, c("Infortunati","NonInfortunati","PercentualeInfortunati","PercentualeNonInfortunati") , names_to = "Infortunato", values_to = "Numero")
+
+
+```
+## Uno sguardo sul lavoro
+
+Sfruttando i dati ISTAT cosa possiamo dire a rigurado della distribuzione degli infortuni in Italia?
+
+> Quali sono i mesi più rischiosi in termini di infortuni?
+
+> Quali settori sono i più pericolosi?
+
+> Come sono distribuiti gli infortuni tra le età e i sessi?
+
+## Settori dove avvengono più infortuni
+
+Individuiamo quali sono i settori con più infortuni e stiliamo una classifica
+```{r, echo=FALSE}
+#dfFVG = dfFVG %>% select(-DESCRIZIONE)
+dfFVG = left_join(dfFVG, gruppiATECO)
+
+dfFVG %>%
+  filter(!is.na(DESCRIZIONE)) %>%
+  #filter(GruppoAttivitaEconomica != "T") %>%
+  ggplot(aes(x = reorder(DESCRIZIONE, DESCRIZIONE, function(x) length(x)))) +
+  geom_bar() +
+  coord_flip() +
+  labs(title = "Numero infortuni per settore (Anni 2016-20)",
+       subtitle = "",
+       x = "Settore",
+       y = "Numero infortuni") +
+  theme_solarized_2() +
+  theme(axis.text.y = element_text(size = 8)) +
+  theme(plot.title = element_text(hjust = -2))
+```
+
+Vediamo come il settore manifatturiero è di gran lunga quello che registra più infortuni
+
+Andiamo poi a incrociare il numero di infortuni con il numero di infortuni fatali per andare a cercare quali sono i settori più rischiosi
+
+```{r, echo=FALSE}
+DecessiPerInfortuni = gruppiATECO %>% select(GruppoAttivitaEconomica)
+
+DecessiPerInfortuni = left_join(DecessiPerInfortuni, dfFVG %>%
+              filter(DataMorte == "") %>%
+              count(GruppoAttivitaEconomica) %>%
+            rename(NumeroInfortuni = "n"))
+
+DecessiPerInfortuni = left_join(DecessiPerInfortuni, dfFVG %>%
+              filter(DataMorte != "") %>%
+              count(GruppoAttivitaEconomica) %>%
+            rename(NumeroDecessi = "n"))
+
+DecessiPerInfortuni["NumeroDecessi"][is.na(DecessiPerInfortuni["NumeroDecessi"])] = 0
+
+DecessiPerInfortuni = left_join(DecessiPerInfortuni, gruppiATECO, by = "GruppoAttivitaEconomica")
+
+DecessiPerInfortuni %>%
+  filter(NumeroDecessi != 0) %>%
+  ggplot(aes(x = reorder(DESCRIZIONE, NumeroDecessi / NumeroInfortuni), y = NumeroDecessi / NumeroInfortuni)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "Settori con rischio maggiore di infortuni mortali (Anni 2016-20)",
+       subtitle = "",
+       x = "Settore economico",
+       y = "Decessi per infortunio") +
+  theme_solarized_2() +
+  theme(axis.text.y = element_text(size = 8)) +
+  theme(plot.title = element_text(hjust = 2))
+```
+
+Osserviamo come, nonostante il grande numero di infortuni nel settore manifatturiero, pochissimi di questi infortuni sono stati fatali. Il settore agricolo d'altro canto si dimostra essere in assoluto il più pericoloso in termini di decessi per infortunio
+ 
+## Confronto tra gli infortuni maschili e femminili per età
+
+```{r, echo=FALSE}
+dfFVG %>%
+  count(Eta, Genere) %>%
+  ggplot(aes(x = Eta, y = n, color =  Genere)) +
+  geom_line(size = 1.5, alpha = .8, stat = "identity") +
+  scale_x_continuous(breaks=seq(0,80,5)) +
+  labs(title = "Confronto tra infortunati di sesso maschile e femminile (Anni 2016-20)",
+       subtitle = "",
+       y = "Numero di infortuni",
+       caption = "NB negli infortuni sono presenti anche infortuni avvenuti durante la formazione") +
+  scale_color_discrete(labels = c("Donne", "Uomini")) +
+  theme_solarized_2()
+
+dfFVG %>%
+  ggplot(aes(x = Genere, y = Eta, fill = Genere)) +
+  geom_boxplot() +
+  scale_y_continuous(breaks=seq(0,80,5)) +
+  scale_fill_discrete(labels=c('Donne', 'Uomini')) +
+  scale_x_discrete(labels = c('Donne', 'Uomini')) +
+  geom_abline(slope = 0, intercept = median(dfFVG %>% filter(Genere == "M") %>% pull(Eta)), colour = "#2aa198", size = 1, alpha = 0.5) +
+  geom_abline(slope = 0, intercept = median(dfFVG %>% filter(Genere == "F") %>% pull(Eta)), colour = "#d33682", size = 1, alpha = 0.5) +
+  labs(title = "Distribuzione delgli infortuni in termini di età tra uomini e donne (Anni 2016-20)",
+       subtitle = "",
+       caption = "NB negli infortuni sono presenti anche infortuni avvenuti durante la formazione") +
+  theme_solarized_2() +
+  theme(legend.position = "none")
+```
+
+Come suggerito dal _line graph_ vediamo che la distribuzione degli infortuni nelle donne è spostata verso età maggiori, supposizione confermataci dal _box plot_
+
+```{r, echo=FALSE}
+
+
+InfortuniPerLavoratori %>% filter(Infortunato == "PercentualeInfortunati") %>% ggplot(aes(x = Numero, y = Genere)) +
+  geom_point()+
+  labs(title = "Percentuale di infortuni sul numero totale di lavoratori (Anni 2016-17)",
+       subtitle = "",
+       x = "Percentuale infortunati",
+       y = "",
+       caption = "NB negli infortuni sono presenti anche infortuni avvenuti durante la formazione") +
+  geom_segment(aes(x = 0, y = Genere,xend = Numero, yend = Genere), colour = "red") +
+  geom_segment(aes(x = Numero, y = Genere,xend = 100, yend = Genere), color = "blue") +
+  geom_label(aes(x=50-Numero, y=Genere,  label = "PercentualeNonInfortunati"), fill = "#fdf6e3") +
+  scale_y_discrete(labels = c("Donne", "Uomini"))+
+  theme_solarized_2()
+
+
+InfortuniPerLavoratori %>% filter(Infortunato == "PercentualeInfortunati") %>% ggplot(aes(x = Numero, y = Genere)) +
+  geom_point()+
+  geom_segment(aes(x = 0, y = Genere,xend = Numero, yend = Genere), colour = "red") +
+  geom_segment(aes(x = Numero, y = Genere,xend = .1, yend = Genere), color = "blue") +
+  geom_label(aes(x=Numero/2, y=Genere,  label = Infortunato), fill = "#fdf6e3") +
+  labs(title = "Percentuale di infortuni sul numero totale di lavoratori (Anni 2016-17)",
+       subtitle = "La percentuale si estende nell'intervallo 0%-0.1%",
+       x = "Percentuale infortunati",
+       y = "",
+       caption = "NB negli infortuni sono presenti anche infortuni avvenuti durante la formazione") +
+  scale_y_discrete(labels = c("Donne", "Uomini"))+
+  theme_solarized_2()
+```
+
+## Infortuni suddivisi per mese
+
+```{r, echo=FALSE}
+dfFVG %>%
+  count(MeseAccadimento, Genere) %>%
+  ggplot(aes(x = MeseAccadimento, y = n, fill = Genere)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Numero di infortuni suddivisi per mese (Anni 2016-20)",
+       subtitle = "",
+       x = "Mese",
+       y = "Numero di infortuni") +
+  scale_fill_discrete(labels=c('Donne', 'Uomini')) +
+  scale_x_discrete(labels=c("GEN","FEB","MAR","APR","MAG","GIU","LUG","AGO","SET","OTT","NOV","DIC")) +
+  theme_solarized_2()
+```
+
+Possiamo estrarre da questo semplice grafico i mesi nei quali gli infortuni sono più frequenti. Interessante notare come in prossimità dei mesi con festività (luglio e dicembre) e avvicinandosi alle ferie di agosto il numero di infortuni aumenta di mese in mese. 
+
+
+
