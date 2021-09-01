@@ -5,7 +5,7 @@ output:
   slidy_presentation:
     css: ./style.css
     footer: "Colussi Giacomo | 02/09/2021"
-    incremental: yes
+    incremental: no
     widescreen: true
 editor_options: 
   chunk_output_type: inline
@@ -120,7 +120,7 @@ InfortuniPerLavoratori = left_join(InfortuniPerLavoratori, InfortuniPerLavorator
             mutate(InfortuniPerLavoratore = n/(NumeroImpiegateFemmine)))
 
 InfortuniPerLavoratori = dfFVG %>%
-  filter(Eta >= 16) %>%
+  #filter(Eta >= 16) %>%
   filter(AnnoAccadimento == 2017 | AnnoAccadimento == 2016) %>%
   count(Genere) %>%
   mutate(NumeroImpiegati = NumeroImpiegatiMaschi) %>%
@@ -131,12 +131,10 @@ InfortuniPerLavoratori = InfortuniPerLavoratori %>%
   mutate(PercentualeInfortunati = Infortunati/NumeroImpiegati) %>%
   mutate(PercentualeNonInfortunati = NonInfortunati/NumeroImpiegati)
 InfortuniPerLavoratori = pivot_longer(InfortuniPerLavoratori, c("Infortunati","NonInfortunati","PercentualeInfortunati","PercentualeNonInfortunati") , names_to = "Infortunato", values_to = "Numero")
-
-
 ```
 ## Uno sguardo sul lavoro
 
-Sfruttando i dati ISTAT cosa possiamo dire a rigurado della distribuzione degli infortuni in Italia?
+Sfruttando i dati INAIL incrociati con dati ISTAT cosa possiamo dire a rigurado della distribuzione degli infortuni in Friuli Venezia Giulia?
 
 > Quali settori sono i più pericolosi?
 
@@ -157,13 +155,13 @@ dfFVG %>%
   ggplot(aes(x = reorder(DESCRIZIONE, DESCRIZIONE, function(x) length(x)))) +
   geom_bar() +
   coord_flip() +
-  labs(title = "Numero infortuni per settore (Anni 2016-20)",
+  labs(title = "Numero infortuni per settore (Anni 2016-2020)",
        subtitle = "",
        x = "Settore",
        y = "Numero infortuni") +
   theme_solarized_2() +
   theme(axis.text.y = element_text(size = 8)) +
-  theme(plot.title = element_text(hjust = -2))
+  theme(plot.title = element_text(hjust = 2))
 ```
 
 Vediamo come il settore manifatturiero è di gran lunga quello che registra più infortuni
@@ -192,7 +190,7 @@ DecessiPerInfortuni %>%
   ggplot(aes(x = reorder(DESCRIZIONE, NumeroDecessi / NumeroInfortuni), y = NumeroDecessi / NumeroInfortuni)) +
   geom_bar(stat = "identity") +
   coord_flip() +
-  labs(title = "Settori con rischio maggiore di infortuni mortali (Anni 2016-20)",
+  labs(title = "Settori con rischio maggiore di infortuni mortali (Anni 2016-2020)",
        subtitle = "",
        x = "Settore economico",
        y = "Decessi per infortunio") +
@@ -211,7 +209,7 @@ dfFVG %>%
   ggplot(aes(x = Eta, y = n, color =  Genere)) +
   geom_line(size = 1.5, alpha = .8, stat = "identity") +
   scale_x_continuous(breaks=seq(0,80,5)) +
-  labs(title = "Confronto tra infortunati di sesso maschile e femminile (Anni 2016-20)",
+  labs(title = "Confronto tra infortunati di sesso maschile e femminile (Anni 2016-2020)",
        subtitle = "",
        y = "Numero di infortuni",
        caption = "NB negli infortuni sono presenti anche infortuni avvenuti durante la formazione") +
@@ -226,7 +224,7 @@ dfFVG %>%
   scale_x_discrete(labels = c('Donne', 'Uomini')) +
   geom_abline(slope = 0, intercept = median(dfFVG %>% filter(Genere == "M") %>% pull(Eta)), colour = "#2aa198", size = 1, alpha = 0.5) +
   geom_abline(slope = 0, intercept = median(dfFVG %>% filter(Genere == "F") %>% pull(Eta)), colour = "#d33682", size = 1, alpha = 0.5) +
-  labs(title = "Distribuzione delgli infortuni in termini di età tra uomini e donne (Anni 2016-20)",
+  labs(title = "Distribuzione delgli infortuni in termini di età tra uomini e donne (Anni 2016-2020)",
        subtitle = "",
        caption = "NB negli infortuni sono presenti anche infortuni avvenuti durante la formazione") +
   theme_solarized_2() +
@@ -240,7 +238,7 @@ Come suggerito dal _line graph_ vediamo che la distribuzione degli infortuni nel
 
 InfortuniPerLavoratori %>% filter(Infortunato == "PercentualeInfortunati") %>% ggplot(aes(x = Numero, y = Genere)) +
   geom_point()+
-  labs(title = "Percentuale di infortuni sul numero totale di lavoratori (Anni 2016-17)",
+  labs(title = "Percentuale di infortuni sul numero totale di lavoratori (Anni 2016-2017)",
        subtitle = "",
        x = "Percentuale infortunati",
        y = "",
@@ -257,7 +255,7 @@ InfortuniPerLavoratori %>% filter(Infortunato == "PercentualeInfortunati") %>% g
   geom_segment(aes(x = 0, y = Genere,xend = Numero, yend = Genere), colour = "red") +
   geom_segment(aes(x = Numero, y = Genere,xend = .1, yend = Genere), color = "blue") +
   geom_label(aes(x=Numero/2, y=Genere,  label = Infortunato), fill = "#fdf6e3") +
-  labs(title = "Percentuale di infortuni sul numero totale di lavoratori (Anni 2016-17)",
+  labs(title = "Percentuale di infortuni sul numero totale di lavoratori (Anni 2016-2017)",
        subtitle = "La percentuale si estende nell'intervallo 0%-0.1%",
        x = "Percentuale infortunati",
        y = "",
@@ -265,6 +263,8 @@ InfortuniPerLavoratori %>% filter(Infortunato == "PercentualeInfortunati") %>% g
   scale_y_discrete(labels = c("Donne", "Uomini"))+
   theme_solarized_2()
 ```
+_Capo III - Persone assicurate [...] 5) gli insegnanti e gli alunni delle scuole o istituti di istruzione di qualsiasi ordine e grado, anche privati, che attendano ad esperienze tecnico-scientifiche od esercitazioni pratiche, o che svolgano esercitazioni di lavoro; gli istruttori e gli allievi dei corsi di qualificazione o riqualificazione professionale o di addestramento professionale anche aziendali, o dei cantieri scuola, comunque istituiti o gestiti, nonché i preparatori, gli inservienti e gli addetti alle esperienze ed esercitazioni tecnico-pratiche o di lavoro;_
+D.P.R. 30 giugno 1965, n. 1124
 
 ## Infortuni suddivisi per mese
 
@@ -273,7 +273,7 @@ dfFVG %>%
   count(MeseAccadimento, Genere) %>%
   ggplot(aes(x = MeseAccadimento, y = n, fill = Genere)) +
   geom_bar(stat = "identity") +
-  labs(title = "Numero di infortuni suddivisi per mese (Anni 2016-20)",
+  labs(title = "Numero di infortuni suddivisi per mese (Anni 2016-2020)",
        subtitle = "",
        x = "Mese",
        y = "Numero di infortuni") +
@@ -285,4 +285,16 @@ dfFVG %>%
 Possiamo estrarre da questo semplice grafico i mesi nei quali gli infortuni sono più frequenti. Interessante notare come in prossimità dei mesi con festività (luglio e dicembre) e avvicinandosi alle ferie di agosto il numero di infortuni aumenta di mese in mese. 
 
 
+## Fonti
 
+* Dati INAIL
+
+> https://dati.inail.it/opendata/elements1/DatiConCadenzaMensileInfortuniFriuliVeneziaGiulia_
+
+* Dati ISTAT
+
+> http://dati.istat.it/
+
+* Tabelle di decodifica
+
+> https://www.inail.it/cs/internet/atti-e-documenti/moduli-e-modelli/prestazioni/denuncia-malattia-professionale/tabelle-di-decodifica.html
